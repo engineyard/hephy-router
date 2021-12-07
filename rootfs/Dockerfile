@@ -193,7 +193,7 @@ RUN set -x && \
 COPY . /
 
 # Fix some permissions since we'll be running as a non-root user
-RUN chown -R router:router /opt/router /var/log
+RUN chown -R router:router /opt/router /var/log /www
 
 USER router
 

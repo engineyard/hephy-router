@@ -5,4 +5,13 @@ set -eof pipefail
 mkfifo -m 600 /tmp/logpipe
 cat < /tmp/logpipe 1>&2 &
 
+# set custom maintenance page on router startup. 
+# this can be specified via optional MAINTENANCE_PAGE_URL environment variable.
+
+if [[ "$MAINTENANCE_PAGE_URL" == *".html" ]]; then 
+	if ( curl -o/dev/null -sfI "$MAINTENANCE_PAGE_URL" ); then 
+		curl -o /www/maintenance.html $MAINTENANCE_PAGE_URL; 
+	fi; 
+fi;
+
 exec /opt/router/sbin/router
