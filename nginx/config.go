@@ -12,17 +12,14 @@ import (
 )
 
 const (
-	confTemplate = `{{ $routerConfig := . }}daemon off;
+	confTemplate = `daemon off;
 pid /tmp/nginx.pid;
-worker_processes {{ $routerConfig.WorkerProcesses }};
+worker_processes auto;
 
-{{ if $routerConfig.LoadModsecurityModule -}}
-# Loading the Modsecurity connector nginx dynamic module
-load_module modules/ngx_http_modsecurity_module.so;
-{{- end }}
+
 
 events {
-	worker_connections {{ $routerConfig.MaxWorkerConnections }};
+	worker_connections 768;
 	# multi_accept on;
 }
 
@@ -32,45 +29,39 @@ http {
 	tcp_nopush on;
 	tcp_nodelay on;
 
-	vhost_traffic_status_zone shared:vhost_traffic_status:{{ $routerConfig.TrafficStatusZoneSize }};
+	vhost_traffic_status_zone shared:vhost_traffic_status:1m;
 
 	# The timeout value must be greater than the front facing load balancers timeout value.
 	# Default is the deis recommended timeout value for ELB - 1200 seconds + 100s extra.
-	keepalive_timeout {{ $routerConfig.DefaultTimeout }};
+	keepalive_timeout 1300s;
 
 	types_hash_max_size 2048;
-	server_names_hash_max_size {{ $routerConfig.ServerNameHashMaxSize }};
-	server_names_hash_bucket_size {{ $routerConfig.ServerNameHashBucketSize }};
+	server_names_hash_max_size 4096;
+	server_names_hash_bucket_size 512;
 
-	{{ $gzipConfig := $routerConfig.GzipConfig }}{{ if $gzipConfig.Enabled }}gzip on;
-	gzip_comp_level {{ $gzipConfig.CompLevel }};
-	gzip_disable {{ $gzipConfig.Disable }};
-	gzip_http_version {{ $gzipConfig.HTTPVersion }};
-	gzip_min_length {{ $gzipConfig.MinLength }};
-	gzip_types {{ $gzipConfig.Types }};
-	gzip_proxied {{ $gzipConfig.Proxied }};
-	gzip_vary {{ $gzipConfig.Vary }};{{ end }}
+	gzip on;
+	gzip_comp_level 5;
+	gzip_disable msie6;
+	gzip_http_version 1.1;
+	gzip_min_length 256;
+	gzip_types application/atom+xml application/javascript application/json application/rss+xml application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon text/css text/plain text/x-component;
+	gzip_proxied any;
+	gzip_vary on;
 
-	client_max_body_size {{ $routerConfig.BodySize }};
-	large_client_header_buffers {{ $routerConfig.LargeHeaderBuffersCount }} {{ $routerConfig.LargeHeaderBuffersSize }};
+	client_max_body_size 1m;
+	large_client_header_buffers 4 32k;
 
-	{{ if $routerConfig.DisableServerTokens -}}
-	server_tokens off;
-	{{- end}}
-	{{ range $realIPCIDR := $routerConfig.ProxyRealIPCIDRs -}}
-	set_real_ip_from {{ $realIPCIDR }};
-	{{ end -}}
+
+	set_real_ip_from 64.252.64.0/18;
+	set_real_ip_from 64.252.128.0/18;
+	set_real_ip_from 10.0.0.0/8;
 	real_ip_recursive on;
-	{{ if $routerConfig.UseProxyProtocol -}}
-	real_ip_header proxy_protocol;
-	{{- else -}}
 	real_ip_header X-Forwarded-For;
-	{{- end }}
 
-	log_format upstreaminfo '{{ $routerConfig.LogFormat }}';
+	log_format upstreaminfo '[$time_iso8601] - $app_name - $remote_addr - $remote_user - $status - "$request" - $bytes_sent - "$http_referer" - "$http_user_agent" - "$server_name" - $upstream_addr - $http_host - $upstream_response_time - $request_time';
 
 	access_log /tmp/logpipe upstreaminfo;
-	error_log  /tmp/logpipe {{ $routerConfig.ErrorLogLevel }};
+	error_log  /tmp/logpipe error;
 
 	map $http_upgrade $connection_upgrade {
 		default upgrade;
@@ -117,100 +108,48 @@ http {
 	}
 
 
-	{{ $sslConfig := $routerConfig.SSLConfig }}
-	{{ $hstsConfig := $sslConfig.HSTSConfig }}{{ if $hstsConfig.Enabled }}
-	# HSTS instructs the browser to replace all HTTP links with HTTPS links for this domain until maxAge seconds from now.
-	# The $sts variable is used later in each server block.
-	map $access_scheme $sts {
-		'https' 'max-age={{ $hstsConfig.MaxAge }}{{ if $hstsConfig.IncludeSubDomains }}; includeSubDomains{{ end }}{{ if $hstsConfig.Preload }}; preload{{ end }}';
-	}
-	{{ end }}
-	{{ if ne $sslConfig.EarlyDataMethods "" }}
+
+
+
 	# Only allow early data (TLSv1.3 0-RTT) for select methods
 	map $request_method $ssl_block_early_data {
 		default $ssl_early_data;
-		"~^{{ $sslConfig.EarlyDataMethods }}$" 0;
+		"~^GET|HEAD|OPTIONS$" 0;
 	}
-	{{ end }}
 
-	{{ if $routerConfig.RequestIDs }}
-		map $http_x_correlation_id $correlation_id {
-			default "$http_x_correlation_id,$request_id";
-			'' $request_id;
-		}
-	{{ end }}
 
-	{{/* Since HSTS headers are not permitted on HTTP requests, 301 redirects to HTTPS resources are also necessary. */}}
-	{{/* This means we force HTTPS if HSTS is enabled. */}}
-	{{ $enforceSecure := or $sslConfig.Enforce $hstsConfig.Enabled }}
 
-	{{ if $routerConfig.DefaultServiceEnabled }}
-	server {
-		listen 8080 default_server{{ if $routerConfig.UseProxyProtocol }} proxy_protocol{{ end }};
-		server_name _;
-		server_name_in_redirect off;
-		port_in_redirect off;
-		set $app_name "{{ $routerConfig.DefaultAppName }}";
-		vhost_traffic_status_filter_by_set_key {{ $routerConfig.DefaultAppName }} application::*;
-		location ~ ^/healthz/?$ {
-			access_log off;
-			default_type 'text/plain';
-			return 200;
-		}
 
-		# set header size limits
-		{{ if $routerConfig.HTTP2Enabled }} http2_max_header_size {{ $routerConfig.HTTP2MaxHeaderSize }}; {{ end }}
-		{{ if $routerConfig.HTTP2Enabled }} http2_max_field_size  {{ $routerConfig.HTTP2MaxFieldSize }};  {{ end }}
 
-		location / {
-			proxy_buffering {{ if $routerConfig.ProxyBuffersConfig.Enabled }}on{{ else }}off{{ end }};
-			proxy_buffer_size {{ $routerConfig.ProxyBuffersConfig.Size }};
-			proxy_buffers {{ $routerConfig.ProxyBuffersConfig.Number }} {{ $routerConfig.ProxyBuffersConfig.Size }};
-			proxy_busy_buffers_size {{ $routerConfig.ProxyBuffersConfig.BusySize }};
-			proxy_set_header Host $host;
-			proxy_set_header X-Forwarded-For $remote_addr;
-			proxy_set_header X-Forwarded-Proto $access_scheme;
-			proxy_set_header X-Forwarded-Port $forwarded_port;
-			proxy_redirect off;
-			proxy_http_version 1.1;
-			proxy_set_header Upgrade $http_upgrade;
-			proxy_set_header Connection $connection_upgrade;
-			{{ if ne $sslConfig.EarlyDataMethods "" }}proxy_set_header Early-Data $ssl_early_data;{{ end }}
-			proxy_pass http://{{$routerConfig.DefaultServiceIP}}:80;
-		}
-	}
-	{{ else }}
+
+
+
+
 
 	# Default server handles requests for unmapped hostnames, including healthchecks
 	server {
-		listen 8080 default_server reuseport{{ if $routerConfig.UseProxyProtocol }} proxy_protocol{{ end }};
-		listen 6443 default_server ssl {{ if $routerConfig.HTTP2Enabled }}http2{{ end }} {{ if $routerConfig.UseProxyProtocol }}proxy_protocol{{ end }};
+		listen 8652 default_server reuseport;
+		listen 6443 default_server ssl http2 ;
 
 		# set header size limits
-		{{ if $routerConfig.HTTP2Enabled }} http2_max_header_size {{ $routerConfig.HTTP2MaxHeaderSize }}; {{ end }}
-		{{ if $routerConfig.HTTP2Enabled }} http2_max_field_size  {{ $routerConfig.HTTP2MaxFieldSize }};  {{ end }}
+		 http2_max_header_size 32k;
+		 http2_max_field_size  16k;
 
 		set $app_name "router-default-vhost";
-		ssl_protocols {{ $sslConfig.Protocols }};
-		{{ if ne $sslConfig.Ciphers "" }}ssl_ciphers {{ $sslConfig.Ciphers }};{{ end }}
+		ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
+		ssl_ciphers [TLS_AES_128_GCM_SHA256|TLS_CHACHA20_POLY1305_SHA256]:TLS_AES_256_GCM_SHA384:[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305|ECDHE-ECDSA-CHACHA20-POLY1305-OLD]:[ECDHE-RSA-AES128-GCM-SHA256|ECDHE-RSA-CHACHA20-POLY1305|ECDHE-RSA-CHACHA20-POLY1305-OLD]:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:DES-CBC3-SHA;
 		ssl_prefer_server_ciphers on;
-		ssl_early_data {{ if ne $sslConfig.EarlyDataMethods "" }}on{{ else }}off{{ end }};
-		{{ if $routerConfig.PlatformCertificate }}
+		ssl_early_data on;
+
 		ssl_certificate /opt/router/ssl/platform.crt;
 		ssl_certificate_key /opt/router/ssl/platform.key;
-		{{ else }}
-		ssl_certificate /opt/router/ssl/default/default.crt;
-		ssl_certificate_key /opt/router/ssl/default/default.key;
-		{{ end }}
-		{{ if ne $sslConfig.SessionCache "" }}ssl_session_cache {{ $sslConfig.SessionCache }};
-		ssl_session_timeout {{ $sslConfig.SessionTimeout }};{{ end }}
-		ssl_session_tickets {{ if $sslConfig.UseSessionTickets }}on{{ else }}off{{ end }};
-		ssl_buffer_size {{ $sslConfig.BufferSize }};
-		{{ if ne $sslConfig.DHParam "" }}ssl_dhparam /opt/router/ssl/dhparam.pem;{{ end }}
-		{{ if ne $routerConfig.ReferrerPolicy "" }}
-		add_header Referrer-Policy {{ $routerConfig.ReferrerPolicy }};
-		{{ end }}
-		server_name _;
+
+
+		ssl_session_tickets on;
+		ssl_buffer_size 4k;
+		ssl_dhparam /opt/router/ssl/dhparam.pem;
+
+		server_name google.com;
 		location ~ ^/healthz/?$ {
 			access_log off;
 			default_type 'text/plain';
@@ -220,7 +159,7 @@ http {
 			return 404;
 		}
 	}
-	{{ end }}
+
 
 	# Healthcheck on 9090 -- never uses proxy_protocol
 	server {
@@ -248,115 +187,155 @@ http {
 		}
 	}
 
-	{{range $appConfig := $routerConfig.AppConfigs}}{{range $domain := $appConfig.Domains}}server {
-		listen 8080{{ if $routerConfig.UseProxyProtocol }} proxy_protocol{{ end }};
-		server_name {{ if and $routerConfig.EnableRegexDomains (contains $domain $appConfig.RegexDomain)}}~^{{$domain}}\.(?<domain>.+)$ ~^{{$appConfig.RegexDomain}}\.(?<domain>.+)${{ else if contains "." $domain }}{{ $domain }}{{ else if ne $routerConfig.PlatformDomain "" }}{{ $domain }}.{{ $routerConfig.PlatformDomain }}{{ else }}~^{{ $domain }}\.(?<domain>.+)${{ end }};
+
+
+	server {
+
+		listen 8080 default_server;
+		server_name ~.;
 		server_name_in_redirect off;
 		port_in_redirect off;
-		set $app_name "{{ $appConfig.Name }}";
+		set $app_name "konimbo-stage";
+		proxy_set_header Connection "";
 
-		{{ if $routerConfig.LoadModsecurityModule -}}
-		# Turning on modsecurity if modsecurity module loaded
-		modsecurity on;
-		modsecurity_rules_file /opt/router/conf/modsecurity.conf;
-		{{- end }}
+
+
 
 		# set header size limits
-		{{ if $routerConfig.HTTP2Enabled }} http2_max_header_size {{ $routerConfig.HTTP2MaxHeaderSize }}; {{ end }}
-		{{ if $routerConfig.HTTP2Enabled }} http2_max_field_size  {{ $routerConfig.HTTP2MaxFieldSize }};  {{ end }}
+		 http2_max_header_size 32k;
+		 http2_max_field_size  16k;
 
-		{{ if index $appConfig.Certificates $domain }}
-		listen 6443 ssl {{ if $routerConfig.HTTP2Enabled }}http2{{ end }} {{ if $routerConfig.UseProxyProtocol }}proxy_protocol{{ end }};
-		ssl_protocols {{ $sslConfig.Protocols }};
-		{{ if ne $sslConfig.Ciphers "" }}ssl_ciphers {{ $sslConfig.Ciphers }};{{ end }}
-		ssl_prefer_server_ciphers on;
-		ssl_early_data {{ if ne $sslConfig.EarlyDataMethods "" }}on{{ else }}off{{ end }};
-		ssl_certificate /opt/router/ssl/{{ $domain }}.crt;
-		ssl_certificate_key /opt/router/ssl/{{ $domain }}.key;
-		{{ if ne $sslConfig.SessionCache "" }}ssl_session_cache {{ $sslConfig.SessionCache }};
-		ssl_session_timeout {{ $sslConfig.SessionTimeout }};{{ end }}
-		ssl_session_tickets {{ if $sslConfig.UseSessionTickets }}on{{ else }}off{{ end }};
-		ssl_buffer_size {{ $sslConfig.BufferSize }};
-		{{ if ne $sslConfig.DHParam "" }}ssl_dhparam /opt/router/ssl/dhparam.pem;{{ end }}
-		{{ end }}
 
-		{{ if or $routerConfig.EnforceWhitelists (or (ne (len $routerConfig.DefaultWhitelist) 0) (ne (len $appConfig.Whitelist) 0)) }}
-		{{ if or (eq (len $appConfig.Whitelist) 0) (eq $routerConfig.WhitelistMode "extend") }}{{ range $whitelistEntry := $routerConfig.DefaultWhitelist }}allow {{ $whitelistEntry }};{{ end }}{{ end }}
-		{{ range $whitelistEntry := $appConfig.Whitelist }}allow {{ $whitelistEntry }};{{ end }}
-		deny all;
-		{{ end }}
 
-		vhost_traffic_status_filter_by_set_key {{ $appConfig.Name }} application::*;
+
+
+		vhost_traffic_status_filter_by_set_key konimbo-stage application::*;
 
 		if ($ssl_block_early_data) {
 			return 425;
 		}
 
-		{{range $location := $appConfig.Locations}}
-			location {{ $location.Path }} {
-				{{ if $routerConfig.RequestIDs }}
-				add_header X-Request-Id $request_id always;
-				add_header X-Correlation-Id $correlation_id always;
-				{{end}}
 
-				{{ if (and (ne $appConfig.ReferrerPolicy "")  (ne $appConfig.ReferrerPolicy "none")) }}add_header Referrer-Policy {{ $appConfig.ReferrerPolicy }};
-				{{ else if (and (ne $routerConfig.ReferrerPolicy "") (and (ne $appConfig.ReferrerPolicy "none") (ne $routerConfig.ReferrerPolicy "none"))) }}add_header Referrer-Policy {{ $routerConfig.ReferrerPolicy }};{{ end }}
+			location / {
 
-				{{ if $location.App.Maintenance }}return 503;{{ else if $location.App.Available }}
-				proxy_buffering {{ if $location.App.Nginx.ProxyBuffersConfig.Enabled }}on{{ else }}off{{ end }};
-				proxy_buffer_size {{ $location.App.Nginx.ProxyBuffersConfig.Size }};
-				proxy_buffers {{ $location.App.Nginx.ProxyBuffersConfig.Number }} {{ $location.App.Nginx.ProxyBuffersConfig.Size }};
-				proxy_busy_buffers_size {{ $location.App.Nginx.ProxyBuffersConfig.BusySize }};
+
+
+
+
+				proxy_buffering off;
+				proxy_buffer_size 4k;
+				proxy_buffers 8 4k;
+				proxy_busy_buffers_size 8k;
 				proxy_set_header Host $host;
 				proxy_set_header X-Forwarded-For $remote_addr;
 				proxy_set_header X-Forwarded-Proto $access_scheme;
 				proxy_set_header X-Forwarded-Port $forwarded_port;
 				proxy_redirect off;
-				proxy_connect_timeout {{ $location.App.ConnectTimeout }};
-				proxy_send_timeout {{ $location.App.TCPTimeout }};
-				proxy_read_timeout {{ $location.App.TCPTimeout }};
+				proxy_connect_timeout 30s;
+				proxy_send_timeout 1300s;
+				proxy_read_timeout 1300s;
 				proxy_http_version 1.1;
 				proxy_set_header Upgrade $http_upgrade;
 				proxy_set_header Connection $connection_upgrade;
-				{{ if ne $sslConfig.EarlyDataMethods "" }}proxy_set_header Early-Data $ssl_early_data;{{ end }}
-				{{ if $routerConfig.RequestIDs }}
-				proxy_set_header X-Request-Id $request_id;
-				proxy_set_header X-Correlation-Id $correlation_id;
-				{{ end }}
-				{{ if and $routerConfig.RequestStartHeader (not $appConfig.DisableRequestStartHeader) }}
-				proxy_set_header X-Request-Start "t=${msec}";
-				{{ end }}
+				proxy_set_header Early-Data $ssl_early_data;
 
-				{{ if or $enforceSecure $location.App.SSLConfig.Enforce }}if ($access_scheme !~* "^https|wss$") {
-					return 301 $uri_scheme://$host$request_uri;
-				}{{ end }}
 
-				{{ if $hstsConfig.Enabled }}add_header Strict-Transport-Security $sts always;{{ end }}
 
-				proxy_pass http://{{$location.App.ServiceIP}}:80;{{ else }}return 503;{{ end }}
+
+
+
+
+				proxy_pass http://konimbo-stage.konimbo-stage:80;
 			}
-		{{end}}
 
-		{{ if $appConfig.Maintenance }}error_page 503 @maintenance;
-			location @maintenance {
-					root /;
-			    rewrite ^(.*)$ /www/maintenance.html break;
-			}
-		{{ end }}
+
+
 	}
 
-	{{end}}{{end}}
+server {
+		listen 8080 proxy_protocol;
+		server_name ~^eyk\.(?<domain>.+)$;
+		server_name_in_redirect off;
+		port_in_redirect off;
+		set $app_name "deis/deis-controller";
+                proxy_set_header Connection "";
+
+
+
+		# set header size limits
+		 http2_max_header_size 32k;
+		 http2_max_field_size  16k;
+
+
+		listen 6443 ssl http2 proxy_protocol;
+		ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
+		ssl_ciphers [TLS_AES_128_GCM_SHA256|TLS_CHACHA20_POLY1305_SHA256]:TLS_AES_256_GCM_SHA384:[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305|ECDHE-ECDSA-CHACHA20-POLY1305-OLD]:[ECDHE-RSA-AES128-GCM-SHA256|ECDHE-RSA-CHACHA20-POLY1305|ECDHE-RSA-CHACHA20-POLY1305-OLD]:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:DES-CBC3-SHA;
+		ssl_prefer_server_ciphers on;
+		ssl_early_data on;
+		ssl_certificate /opt/router/ssl/eyk.crt;
+		ssl_certificate_key /opt/router/ssl/eyk.key;
+
+		ssl_session_tickets on;
+		ssl_buffer_size 4k;
+		ssl_dhparam /opt/router/ssl/dhparam.pem;
+
+
+
+
+
+		vhost_traffic_status_filter_by_set_key deis/deis-controller application::*;
+
+		if ($ssl_block_early_data) {
+			return 425;
+		}
+
+
+			location / {
+
+
+
+
+
+				proxy_buffering off;
+				proxy_buffer_size 4k;
+				proxy_buffers 8 4k;
+				proxy_busy_buffers_size 8k;
+				proxy_set_header Host $host;
+				proxy_set_header X-Forwarded-For $remote_addr;
+				proxy_set_header X-Forwarded-Proto $access_scheme;
+				proxy_set_header X-Forwarded-Port $forwarded_port;
+				proxy_redirect off;
+				proxy_connect_timeout 10;
+				proxy_send_timeout 1200;
+				proxy_read_timeout 1200;
+				proxy_http_version 1.1;
+				proxy_set_header Upgrade $http_upgrade;
+				proxy_set_header Connection $connection_upgrade;
+				proxy_set_header Early-Data $ssl_early_data;
+
+
+
+
+
+
+
+				proxy_pass http://deis-controller:80;
+			}
+
+
+		}	
+
+
 }
 
-{{ if $routerConfig.BuilderConfig }}{{ $builderConfig := $routerConfig.BuilderConfig }}stream {
+stream {
 	server {
-		listen 2222 {{ if $routerConfig.UseProxyProtocol }}proxy_protocol{{ end }};
-		proxy_connect_timeout {{ $builderConfig.ConnectTimeout }};
-		proxy_timeout {{ $builderConfig.TCPTimeout }};
-		proxy_pass {{$builderConfig.ServiceIP}}:2222;
+		listen 2222 ;
+		proxy_connect_timeout 10s;
+		proxy_timeout 1200s;
+		proxy_pass deis-builder:2222;
 	}
-}{{ end }}
-`
+}`
 )
 
 // WriteCerts writes SSL certs to file from router configuration.
@@ -441,3 +420,4 @@ func WriteConfig(routerConfig *model.RouterConfig, filePath string) error {
 	err = tmpl.Execute(file, routerConfig)
 	return err
 }
+

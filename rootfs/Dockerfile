@@ -8,6 +8,7 @@ RUN set -x && \
     apt-get install -y --no-install-recommends \
         g++ make \
         libcurl4-openssl-dev \
+	vim \
         libyajl-dev \
         liblmdb-dev \
         libxml2-dev \
@@ -30,7 +31,7 @@ RUN set -x && \
     install -D -m 644 -t "$PREFIX/share/modsecurity" \
         unicode.mapping \
         modsecurity.conf-recommended
-
+RUN apt-get install -y vim
 FROM hephy/base:v0.4.1 as openssl
 
 COPY /bin /bin
@@ -40,7 +41,7 @@ RUN set -x && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential fakeroot devscripts equivs
-
+RUN apt-get install -y vim
 RUN set -x && \
     export OPENSSL_VERSION=1.1.1k OPENSSL_VERSION_DEB=1.1.1k-1 BUILD_PATH=$PWD DEBEMAIL="Team Hephy <team@teamhephy.com>" && \
     get_src_file b070d0422d0d666eaef5ca86b69b59e15eee8287de8183b2375ca28e038adbf1 \
@@ -80,7 +81,6 @@ RUN set -x && \
     mv Packages *.deb ../repo
 
 FROM hephy/base:v0.4.1
-
 RUN adduser --system \
 	--shell /bin/bash \
 	--disabled-password \
@@ -98,7 +98,7 @@ RUN set -x && \
     runtimeDeps='ca-certificates libcurl4 libxml2 libpcre3 libgeoip1 libmaxminddb0 libfuzzy2 libssl1.1 openssl libyajl2' && \
     echo 'deb [trusted=yes] file:/usr/local/repo ./' >> /etc/apt/sources.list && \
     apt-get update && \
-    apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends vim \
         $buildDeps \
         $runtimeDeps && \
     export NGINX_VERSION=1.18.0 SIGNING_KEY=B0F4253373F8F6F510D42178520A9993A1C052F8 \
