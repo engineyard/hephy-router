@@ -48,7 +48,7 @@ http {
 	gzip_proxied any;
 	gzip_vary on;
 
-	client_max_body_size 1m;
+	client_max_body_size 50m;
 	large_client_header_buffers 4 32k;
 
 
@@ -128,7 +128,7 @@ http {
 
 	# Default server handles requests for unmapped hostnames, including healthchecks
 	server {
-		listen 8652 default_server reuseport;
+		listen 8080 default_server reuseport;
 		listen 6443 default_server ssl http2 ;
 
 		# set header size limits
@@ -149,14 +149,37 @@ http {
 		ssl_buffer_size 4k;
 		ssl_dhparam /opt/router/ssl/dhparam.pem;
 
-		server_name google.com;
+		server_name _;
 		location ~ ^/healthz/?$ {
 			access_log off;
 			default_type 'text/plain';
 			return 200;
 		}
 		location / {
-			return 404;
+			proxy_buffering off;
+                                proxy_buffer_size 4k;
+                                proxy_buffers 8 4k;
+                                proxy_busy_buffers_size 8k;
+                                proxy_set_header Host $host;
+                                proxy_set_header X-Forwarded-For $remote_addr;
+                                proxy_set_header X-Forwarded-Proto $access_scheme;
+                                proxy_set_header X-Forwarded-Port $forwarded_port;
+                                proxy_redirect off;
+                                proxy_connect_timeout 30s;
+                                proxy_send_timeout 1300s;
+                                proxy_read_timeout 1300s;
+                                proxy_http_version 1.1;
+                                proxy_set_header Upgrade $http_upgrade;
+                                proxy_set_header Connection $connection_upgrade;
+                                proxy_set_header Early-Data $ssl_early_data;
+
+
+
+
+
+
+
+                                proxy_pass http://konimbo-stage.konimbo-stage:80;
 		}
 	}
 
@@ -191,8 +214,10 @@ http {
 
 	server {
 
-		listen 8080 default_server;
-		server_name ~.;
+		#listen 8080 default_server;
+		#server_name ~.;
+		listen 8080;
+		server_name google.com;
 		server_name_in_redirect off;
 		port_in_redirect off;
 		set $app_name "konimbo-stage";
@@ -258,7 +283,7 @@ server {
 		server_name_in_redirect off;
 		port_in_redirect off;
 		set $app_name "deis/deis-controller";
-                proxy_set_header Connection "";
+		proxy_set_header Connection "";
 
 
 
@@ -330,7 +355,7 @@ server {
 
 stream {
 	server {
-		listen 2222 ;
+		listen 2222 proxy_protocol;
 		proxy_connect_timeout 10s;
 		proxy_timeout 1200s;
 		proxy_pass deis-builder:2222;
