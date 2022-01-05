@@ -52,6 +52,10 @@ docker-build: build check-docker
 	DOCKER_BUILDKIT=1 docker build ${DOCKER_BUILD_FLAGS} -t ${IMAGE} rootfs
 	docker tag ${IMAGE} ${MUTABLE_IMAGE}
 
+docker-build-s6: build check-docker
+	DOCKER_BUILDKIT=1 docker build ${DOCKER_BUILD_FLAGS} -t ${IMAGE_S6} rootfs
+	docker tag ${IMAGE_S6} ${MUTABLE_IMAGE_S6}
+
 # Builds the binary-- this should only be executed within the
 # containerized development environment.
 binary-build:

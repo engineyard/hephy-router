@@ -69,8 +69,8 @@ http {
 
 	log_format upstreaminfo '{{ $routerConfig.LogFormat }}';
 
-	access_log /tmp/logpipe upstreaminfo;
-	error_log  /tmp/logpipe {{ $routerConfig.ErrorLogLevel }};
+	access_log /dev/stdout upstreaminfo;
+	error_log /dev/stdout {{ $routerConfig.ErrorLogLevel }};
 
 	map $http_upgrade $connection_upgrade {
 		default upgrade;

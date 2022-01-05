@@ -92,7 +92,6 @@ COPY --from=modsecurity /usr/local /usr/local
 COPY --from=openssl /tmp/repo /usr/local/repo
 
 COPY /bin/ /bin/
-COPY /etc/ /etc/
 
 RUN set -x && \
     buildDeps='gcc make patch libgeoip-dev libmaxminddb-dev libpcre3-dev libssl-dev' \
@@ -196,15 +195,18 @@ COPY /opt /opt
 COPY /www /www
 
 # Fix some permissions since we'll be running as a non-root user
-RUN chown -R router:router /opt/router /var/log /etc/services.d && \
+RUN chown -R router:router /opt/router /var/log && \
+	chmod a+x /opt/router/sbin/boot && \
 	chmod a+x /opt/router/sbin/router
 
-ADD https://github.com/just-containers/s6-overlay/releases/download/v2.2.0.1/s6-overlay-amd64-installer /tmp/
-RUN chmod +x /tmp/s6-overlay-amd64-installer && /tmp/s6-overlay-amd64-installer / && \
-	chown router:router /init
+RUN set -x && \
+    curl -sSL https://github.com/Yelp/dumb-init/releases/download/v1.2.5/dumb-init_1.2.5_x86_64 -o /usr/bin/dumb-init && \
+    chmod a+x /usr/bin/dumb-init && \ 
+    chown router:router /usr/bin/dumb-init 
 
 USER router
 
-ENTRYPOINT ["/init"]
+ENTRYPOINT ["/usr/bin/dumb-init"]
+CMD ["/opt/router/sbin/router"]
 
 EXPOSE 2222 8080 6443 9090
