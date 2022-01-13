@@ -26,7 +26,6 @@ func Start() error {
 // Reload nginx configuration.
 func Reload() error {
 	log.Println("INFO: Reloading nginx...")
-	// cmd := exec.Command(nginxBinary, "-s", "reload")
 	// send HUP (reload) to nginx through s6
 	cmd := exec.Command("s6-svc", "-h", "/var/run/s6/services/nginx")
 	cmd.Stdout = os.Stdout
