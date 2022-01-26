@@ -1,1 +1,4 @@
 Dockerfile
+etc/cont-init.d
+etc/services.d/nginx-access-log
+etc/services.d/nginx-error-log

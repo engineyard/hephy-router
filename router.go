@@ -12,7 +12,6 @@ import (
 )
 
 func main() {
-	nginx.Start()
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		log.Fatalf("Failed to create config: %v", err)

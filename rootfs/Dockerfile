@@ -91,7 +91,8 @@ RUN adduser --system \
 COPY --from=modsecurity /usr/local /usr/local
 COPY --from=openssl /tmp/repo /usr/local/repo
 
-COPY /bin /bin
+COPY /bin/ /bin/
+COPY /etc/ /etc/
 
 RUN set -x && \
     buildDeps='gcc make patch libgeoip-dev libmaxminddb-dev libpcre3-dev libssl-dev' \
@@ -190,12 +191,20 @@ RUN set -x && \
         /usr/lib/x86_64-linux-gnu/gconv/IBM* \
         /usr/lib/x86_64-linux-gnu/gconv/EBC*
 
-COPY . /
+COPY /opt /opt
+
+COPY /www /www
 
 # Fix some permissions since we'll be running as a non-root user
-RUN chown -R router:router /opt/router /var/log
+RUN chown -R router:router /opt/router /var/log /etc/services.d && \
+	chmod a+x /opt/router/sbin/router
+
+ADD https://github.com/just-containers/s6-overlay/releases/download/v2.2.0.1/s6-overlay-amd64-installer /tmp/
+RUN chmod +x /tmp/s6-overlay-amd64-installer && /tmp/s6-overlay-amd64-installer / && \
+	chown router:router /init
 
 USER router
 
-CMD ["/opt/router/sbin/boot"]
+ENTRYPOINT ["/init"]
+
 EXPOSE 2222 8080 6443 9090
