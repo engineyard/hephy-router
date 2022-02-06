@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	confTemplate = `daemon off;
+	confTemplate = `{{ $routerConfig := . }}daemon off;
 pid /tmp/nginx.pid;
 worker_processes auto;
 
@@ -56,7 +56,11 @@ http {
 	set_real_ip_from 64.252.128.0/18;
 	set_real_ip_from 10.0.0.0/8;
 	real_ip_recursive on;
+	{{ if $routerConfig.UseProxyProtocol -}}
+	real_ip_header proxy_protocol;
+	{{- else -}}
 	real_ip_header X-Forwarded-For;
+	{{- end }}
 
 	log_format upstreaminfo '[$time_iso8601] - $app_name - $remote_addr - $remote_user - $status - "$request" - $bytes_sent - "$http_referer" - "$http_user_agent" - "$server_name" - $upstream_addr - $http_host - $upstream_response_time - $request_time';
 
@@ -128,8 +132,8 @@ http {
 
 	# Default server handles requests for unmapped hostnames, including healthchecks
 	server {
-		listen 8080 default_server reuseport;
-		listen 6443 default_server ssl http2 ;
+		listen 8080 default_server reuseport{{ if $routerConfig.UseProxyProtocol }} proxy_protocol{{ end }};
+		listen 6443 default_server ssl http2{{ if $routerConfig.UseProxyProtocol }} proxy_protocol{{ end }};
 
 		# set header size limits
 		 http2_max_header_size 32k;
@@ -216,7 +220,7 @@ http {
 
 		#listen 8080 default_server;
 		#server_name ~.;
-		listen 8080;
+		listen 8080{{ if $routerConfig.UseProxyProtocol }} proxy_protocol{{ end }};
 		server_name google.com;
 		server_name_in_redirect off;
 		port_in_redirect off;
@@ -278,7 +282,7 @@ http {
 	}
 
 server {
-		listen 8080 proxy_protocol;
+		listen 8080{{ if $routerConfig.UseProxyProtocol }} proxy_protocol{{ end }};
 		server_name ~^eyk\.(?<domain>.+)$;
 		server_name_in_redirect off;
 		port_in_redirect off;
@@ -292,7 +296,7 @@ server {
 		 http2_max_field_size  16k;
 
 
-		listen 6443 ssl http2 proxy_protocol;
+		listen 6443 ssl http2{{ if $routerConfig.UseProxyProtocol }} proxy_protocol{{ end }};
 		ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
 		ssl_ciphers [TLS_AES_128_GCM_SHA256|TLS_CHACHA20_POLY1305_SHA256]:TLS_AES_256_GCM_SHA384:[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305|ECDHE-ECDSA-CHACHA20-POLY1305-OLD]:[ECDHE-RSA-AES128-GCM-SHA256|ECDHE-RSA-CHACHA20-POLY1305|ECDHE-RSA-CHACHA20-POLY1305-OLD]:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:DES-CBC3-SHA;
 		ssl_prefer_server_ciphers on;
@@ -355,7 +359,7 @@ server {
 
 stream {
 	server {
-		listen 2222 proxy_protocol;
+		listen 2222{{ if $routerConfig.UseProxyProtocol }} proxy_protocol{{ end }};
 		proxy_connect_timeout 10s;
 		proxy_timeout 1200s;
 		proxy_pass deis-builder:2222;
@@ -445,4 +449,3 @@ func WriteConfig(routerConfig *model.RouterConfig, filePath string) error {
 	err = tmpl.Execute(file, routerConfig)
 	return err
 }
-

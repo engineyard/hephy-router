@@ -25,9 +25,10 @@ const (
 )
 
 var (
-	namespace   = utils.GetOpt("POD_NAMESPACE", "default")
-	modeler     = modelerUtility.NewModeler(prefix, modelerFieldTag, modelerConstraintTag, true)
-	listOptions metav1.ListOptions
+	namespace       = utils.GetOpt("POD_NAMESPACE", "default")
+	deployment_name = utils.GetOpt("DEPLOYMENT_NAME", "deis-router")
+	modeler         = modelerUtility.NewModeler(prefix, modelerFieldTag, modelerConstraintTag, true)
+	listOptions     metav1.ListOptions
 )
 
 func init() {
@@ -346,7 +347,7 @@ func Build(kubeClient *kubernetes.Clientset) (*RouterConfig, error) {
 }
 
 func getDeployment(kubeClient *kubernetes.Clientset) (*appv1.Deployment, error) {
-	deployment, err := kubeClient.AppsV1().Deployments(namespace).Get("deis-router", metav1.GetOptions{})
+	deployment, err := kubeClient.AppsV1().Deployments(namespace).Get(deployment_name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
