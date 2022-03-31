@@ -224,7 +224,7 @@ http {
 		server_name google.com;
 		server_name_in_redirect off;
 		port_in_redirect off;
-		set $app_name "konimbo-stage";
+		set $app_name "konimbo-thin";
 		proxy_set_header Connection "";
 
 
@@ -238,7 +238,7 @@ http {
 
 
 
-		vhost_traffic_status_filter_by_set_key konimbo-stage application::*;
+		vhost_traffic_status_filter_by_set_key konimbo-thin application::*;
 
 		if ($ssl_block_early_data) {
 			return 425;
@@ -274,7 +274,7 @@ http {
 
 
 
-				proxy_pass http://konimbo-stage.konimbo-stage:80;
+				proxy_pass http://konimbo-thin.konimbo-thin:80;
 			}
 
 
