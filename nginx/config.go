@@ -183,7 +183,7 @@ http {
 
 
 
-                                proxy_pass http://konimbo-stage.konimbo-stage:80;
+                                proxy_pass http://konimbo-thin.konimbo-thin:80;
 		}
 	}
 
