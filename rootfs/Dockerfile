@@ -99,7 +99,7 @@ RUN set -x && \
     runtimeDeps='ca-certificates libcurl4 libxml2 libpcre3 libgeoip1 libmaxminddb0 libfuzzy2 libssl1.1 openssl libyajl2' && \
     echo 'deb [trusted=yes] file:/usr/local/repo ./' >> /etc/apt/sources.list && \
     apt-get update && \
-    apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends unzip \
         $buildDeps \
         $runtimeDeps && \
     export NGINX_VERSION=1.18.0 SIGNING_KEY=B0F4253373F8F6F510D42178520A9993A1C052F8 \
@@ -125,6 +125,7 @@ RUN set -x && \
             "https://github.com/leev/ngx_http_geoip2_module/archive/$GEOIP2_VERSION.tar.gz" && \
     get_src a2e5a6950616ae68ba960f83d45830de9349ea06b5bb9fcf9dda0af453ec747b \
             "https://github.com/SpiderLabs/ModSecurity-nginx/archive/$MOD_SECURITY_NGINX_VERSION.tar.gz" && \
+    curl -sSL "https://github.com/openresty/headers-more-nginx-module/archive/refs/heads/master.zip" -o master.zip && unzip master.zip && rm -f master.zip && \
     cd "$BUILD_PATH/zlib-$CLOUDFLARE_ZLIB_VERSION" && \
     make -f Makefile.in distclean && \
     cd "$BUILD_PATH/nginx-$NGINX_VERSION" && \
@@ -150,6 +151,7 @@ RUN set -x && \
       --with-stream \
       --with-zlib="$BUILD_PATH/zlib-$CLOUDFLARE_ZLIB_VERSION" \
       --add-module="$BUILD_PATH/nginx-module-vts-$VTS_VERSION" \
+      --add-dynamic-module="$BUILD_PATH/headers-more-nginx-module-master" \
       --add-dynamic-module="$BUILD_PATH/ngx_http_geoip2_module-$GEOIP2_VERSION" \
       --add-dynamic-module="$BUILD_PATH/ModSecurity-nginx-$MOD_SECURITY_NGINX_VERSION" && \
     make -j`nproc` && \

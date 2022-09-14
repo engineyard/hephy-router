@@ -21,6 +21,8 @@ worker_processes {{ $routerConfig.WorkerProcesses }};
 load_module modules/ngx_http_modsecurity_module.so;
 {{- end }}
 
+load_module modules/ngx_http_headers_more_filter_module.so;
+
 events {
 	worker_connections {{ $routerConfig.MaxWorkerConnections }};
 	# multi_accept on;
@@ -31,6 +33,8 @@ http {
 	sendfile on;
 	tcp_nopush on;
 	tcp_nodelay on;
+
+	more_set_headers 'Server: {{ $routerConfig.EYKServerHeader }}';
 
 	vhost_traffic_status_zone shared:vhost_traffic_status:{{ $routerConfig.TrafficStatusZoneSize }};
 
@@ -217,7 +221,27 @@ http {
 			return 200;
 		}
 		location / {
+			{{ if ne $routerConfig.EYKDefaultApp "" }}
+				proxy_buffering off;
+				proxy_buffer_size 4k;
+				proxy_buffers 8 4k;
+				proxy_busy_buffers_size 8k;
+				proxy_set_header Host $host;
+				proxy_set_header X-Forwarded-For $remote_addr;
+				proxy_set_header X-Forwarded-Proto $access_scheme;
+				proxy_set_header X-Forwarded-Port $forwarded_port;
+				proxy_redirect off;
+				proxy_connect_timeout 30s;
+				proxy_send_timeout 1300s;
+				proxy_read_timeout 1300s;
+				proxy_http_version 1.1;
+				proxy_set_header Upgrade $http_upgrade;
+				proxy_set_header Connection $connection_upgrade;
+				proxy_set_header Early-Data $ssl_early_data;
+				proxy_pass http://{{$routerConfig.EYKDefaultApp}}.{{$routerConfig.EYKDefaultApp}}:80;
+			{{ else }}
 			return 404;
+			{{ end }}
 		}
 	}
 	{{ end }}

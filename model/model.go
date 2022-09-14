@@ -26,6 +26,7 @@ const (
 
 var (
 	namespace   = utils.GetOpt("POD_NAMESPACE", "default")
+	routerName  = utils.GetOpt("ROUTER_NAME", "deis-router")
 	modeler     = modelerUtility.NewModeler(prefix, modelerFieldTag, modelerConstraintTag, true)
 	listOptions metav1.ListOptions
 )
@@ -37,6 +38,9 @@ func init() {
 
 // RouterConfig is the primary type used to encapsulate all router configuration.
 type RouterConfig struct {
+	EYKDefaultApp			 string		 `key:"eykDefaultApp"`
+	EYKServerHeader			 string		 `key:"eykServerHeader"`
+
 	WorkerProcesses          string      `key:"workerProcesses" constraint:"^(auto|[1-9]\\d*)$"`
 	MaxWorkerConnections     string      `key:"maxWorkerConnections" constraint:"^[1-9]\\d*$"`
 	TrafficStatusZoneSize    string      `key:"trafficStatusZoneSize" constraint:"^[1-9]\\d*[kKmM]?$"`
@@ -80,6 +84,9 @@ func newRouterConfig() (*RouterConfig, error) {
 		return nil, err
 	}
 	return &RouterConfig{
+		EYKDefaultApp:			  "",
+		EYKServerHeader:		  "nginx/1.18.0",
+
 		WorkerProcesses:          "auto",
 		MaxWorkerConnections:     "768",
 		TrafficStatusZoneSize:    "1m",
@@ -346,7 +353,7 @@ func Build(kubeClient *kubernetes.Clientset) (*RouterConfig, error) {
 }
 
 func getDeployment(kubeClient *kubernetes.Clientset) (*appv1.Deployment, error) {
-	deployment, err := kubeClient.AppsV1().Deployments(namespace).Get("deis-router", metav1.GetOptions{})
+	deployment, err := kubeClient.AppsV1().Deployments(namespace).Get(routerName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
